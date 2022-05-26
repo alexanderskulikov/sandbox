@@ -7,4 +7,3 @@ pygraphviz
 mip
 pycosat
 shapely
-math

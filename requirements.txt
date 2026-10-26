@@ -1,9 +1,0 @@
-jupyter
-matplotlib
-networkx
-pandas
-numpy
-pygraphviz
-mip
-pycosat
-shapely

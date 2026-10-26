@@ -99,6 +99,13 @@ def luby(i):
 
 
 class Solver:
+    # Tuning parameters
+    VAR_DECAY = 0.95          # VSIDS decay factor
+    RESTART_UNIT = 100        # conflicts per unit of the Luby sequence
+    REDUCE_FIRST = 2000       # conflicts before the first clause deletion
+    REDUCE_INC = 300          # growth of the interval between deletions
+    KEEP_LBD = 2              # learned clauses with LBD <= this are kept
+
     def __init__(self, num_vars, clauses, proof=None):
         n = num_vars
         self.n = n
@@ -108,19 +115,25 @@ class Solver:
         self.phase = [1] * (n + 1)          # 1: try the negative literal first
         self.activity = [0.0] * (n + 1)
         self.var_inc = 1.0
-        self.var_decay = 0.95
+        self.var_decay = self.VAR_DECAY
         self.seen = [0] * (n + 1)
         self.watches = [[] for _ in range(2 * n + 2)]
         self.trail = []
         self.trail_lim = []
         self.qhead = 0
+        # Decision heap of (-activity, var) entries with lazy deletion:
+        # stale entries are skipped when popped.  fresh[v] is True iff the
+        # heap holds an entry for v whose key is v's current activity; every
+        # unassigned variable has such an entry.
         self.heap = [(0.0, v) for v in range(1, n + 1)]
         heapq.heapify(self.heap)
+        self.fresh = [True] * (n + 1)
         self.learnts = []                    # learned clauses (lists)
         self.lbd = {}                        # id(clause) -> LBD
         self.proof = proof
-        self.lit_str = ['0', '0'] + [str(x) for v in range(1, n + 1)
-                                     for x in (v, -v)]
+        if proof is not None:               # DIMACS text of each literal
+            self.lit_str = ['0', '0'] + [str(x) for v in range(1, n + 1)
+                                         for x in (v, -v)]
         self.ok = True
         # statistics
         self.conflicts = 0
@@ -253,8 +266,12 @@ class Solver:
     def rebuild_heap(self):
         act = self.activity
         val = self.val
-        self.heap = [(-act[v], v) for v in range(1, self.n + 1)
-                     if val[2 * v] == 0]
+        fresh = self.fresh
+        self.heap = []
+        for v in range(1, self.n + 1):
+            fresh[v] = val[2 * v] == 0
+            if fresh[v]:
+                self.heap.append((-act[v], v))
         heapq.heapify(self.heap)
 
     def analyze(self, confl):
@@ -268,6 +285,7 @@ class Solver:
         reason = self.reason
         trail = self.trail
         act = self.activity
+        fresh = self.fresh
         cur = len(self.trail_lim)
         learnt = [0]
         path = 0
@@ -284,6 +302,7 @@ class Solver:
                         seen[v] = 1
                         a = act[v] + inc
                         act[v] = a
+                        fresh[v] = False
                         if a > 1e100:
                             self.rescale()
                             inc = self.var_inc
@@ -366,6 +385,7 @@ class Solver:
         val = self.val
         phase = self.phase
         act = self.activity
+        fresh = self.fresh
         heap = self.heap
         push = heapq.heappush
         lim = self.trail_lim[lvl]
@@ -375,7 +395,9 @@ class Solver:
             val[lit] = 0
             val[lit ^ 1] = 0
             phase[v] = lit & 1
-            push(heap, (-act[v], v))
+            if not fresh[v]:
+                push(heap, (-act[v], v))
+                fresh[v] = True
         del trail[lim:]
         del self.trail_lim[lvl:]
         self.qhead = lim
@@ -386,11 +408,17 @@ class Solver:
         heap = self.heap
         val = self.val
         act = self.activity
+        fresh = self.fresh
         pop = heapq.heappop
         while heap:
             a, v = pop(heap)
-            if val[2 * v] == 0 and -a == act[v]:
-                return v
+            if -a == act[v]:
+                fresh[v] = False
+                if val[2 * v] == 0:
+                    return v
+        if len(self.trail) < self.n:       # cannot happen; be safe anyway
+            self.rebuild_heap()
+            return self.pick_branch()
         return 0
 
     def locked(self, c):
@@ -411,7 +439,7 @@ class Solver:
             if len(dead) >= target:
                 break
             c = learnts[i]
-            if lbd[id(c)] <= 2 or self.locked(c):
+            if lbd[id(c)] <= self.KEEP_LBD or self.locked(c):
                 continue
             dead.add(id(c))
         if not dead:
@@ -437,12 +465,12 @@ class Solver:
             self.ok = False
             self.write_proof([])
             return False
-        restart_unit = 100
+        restart_unit = self.RESTART_UNIT
         restart_idx = 0
         restart_limit = luby(0) * restart_unit
         conflicts_since_restart = 0
-        next_reduce = 2000
-        reduce_inc = 300
+        next_reduce = self.REDUCE_FIRST
+        reduce_inc = self.REDUCE_INC
         decay = self.var_decay
         while True:
             confl = self.propagate()

@@ -20,9 +20,18 @@ if ROOT not in sys.path:
 
 import check        # noqa: E402
 import drat_check   # noqa: E402
-import solver       # noqa: E402
 
-SOLVER = os.path.join(ROOT, 'solver.py')
+# SOLVER_UNDER_TEST lets tests/mutation_check.py run the suite against a
+# deliberately broken copy of the solver.
+SOLVER = os.environ.get('SOLVER_UNDER_TEST', os.path.join(ROOT, 'solver.py'))
+if os.path.abspath(SOLVER) == os.path.join(ROOT, 'solver.py'):
+    import solver   # noqa: E402
+else:
+    import importlib.util
+    _spec = importlib.util.spec_from_file_location('solver', SOLVER)
+    solver = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(solver)
+    sys.modules['solver'] = solver
 SEED = int(os.environ.get('TEST_SEED', '12345'))
 
 

@@ -144,20 +144,14 @@ class Solver:
 
         units = []
         for cl in clauses:
-            lits = set()
-            taut = False
-            for x in cl:
-                lit = 2 * x if x > 0 else -2 * x + 1
-                if lit ^ 1 in lits:
-                    taut = True
-                    break
-                lits.add(lit)
-            if taut:
-                continue
+            # drop duplicate literals (keeping the order), skip tautologies
+            lits = list(dict.fromkeys(2 * x if x > 0 else -2 * x + 1
+                                      for x in cl))
+            if len(set(l >> 1 for l in lits)) < len(lits):
+                continue                    # contains x and -x
             if not lits:
                 self.ok = False             # empty clause in the input
                 continue
-            lits = list(lits)
             if len(lits) == 1:
                 units.append(lits[0])
             else:
@@ -503,8 +497,8 @@ class Solver:
                     conflicts_since_restart = 0
                     self.backtrack(0)
                 if self.conflicts >= next_reduce:
-                    next_reduce = self.conflicts + 2000 + reduce_inc * \
-                        self.reductions
+                    next_reduce = self.conflicts + self.REDUCE_FIRST + \
+                        reduce_inc * self.reductions
                     self.reduce_db()
                 v = self.pick_branch()
                 if v == 0:
@@ -517,6 +511,13 @@ class Solver:
         """Values of variables 1..n as DIMACS literals."""
         val = self.val
         return [v if val[2 * v] == 1 else -v for v in range(1, self.n + 1)]
+
+
+def satisfies(model, clauses):
+    """True iff the model (DIMACS literals for variables 1..n) satisfies
+    every clause (lists of DIMACS literals)."""
+    true = set(model)
+    return all(any(x in true for x in cl) for cl in clauses)
 
 
 def format_model(lits, per_line=20):
@@ -577,7 +578,13 @@ def main(argv):
             % (num_vars, len(clauses), solver.conflicts, solver.decisions,
                solver.propagations, solver.restarts, solver.reductions))
     if sat:
-        sys.stdout.write("s SATISFIABLE\n" + format_model(solver.model())
+        model = solver.model()
+        if not satisfies(model, clauses):
+            # Defensive self-check; never expected to trigger.
+            sys.stdout.write("c internal error: model does not satisfy the "
+                             "formula\ns UNKNOWN\n")
+            return 0
+        sys.stdout.write("s SATISFIABLE\n" + format_model(model)
                          + "\n")
         sys.stdout.flush()
         return 10

@@ -333,17 +333,21 @@ of the solve call only. Every answer was certified.
 | 150 | 8 | 6/2 | 8 | 0.18 s | 0.38 s | 1495 | 3054 |
 | 175 | 8 | 5/3 | 8 | 0.66 s | 2.04 s | 3607 | 10112 |
 | 200 | 8 | 4/4 | 8 | 4.01 s | 7.78 s | 14436 | 25798 |
+| 225 | 8 | 6/2 | 8 | 9.91 s | 28.22 s | 26509 | 66539 |
+| 250 | 8 | 4/4 | 8 | 55.82 s | 161.10 s | 91889 | 210205 |
 
-(The rows for n = 225 and n = 250 are still being measured.)
+Up to n = 225 every formula takes under 30 s. At n = 250, 2 of the 8
+formulas take longer than 60 s: one SAT formula takes 161 s and one UNSAT
+formula takes 93 s. Two more UNSAT formulas take 55 s and 58 s.
 
 ## What does not work, was not checked, or I am unsure about
 
 * **Larger hard random formulas.** Random 3-SAT near the threshold grows
-  exponentially harder with n. At n = 250, some UNSAT formulas take more than
-  60 s: one instance needed 164,000 conflicts and 120 s with an earlier
-  version of the solver.
-  Up to n ≈ 200 the solver is comfortably within the limit. Hard
-  combinatorial formulas are also slow: PHP(9, 8) takes about 23 s.
+  exponentially harder with n. Up to n ≈ 225 the solver stays within the
+  60 s limit. At n = 250 it does not reliably: in the table above, 2 of 8
+  formulas took 93 s and 161 s. In an earlier experiment, one UNSAT formula
+  needed 164,000 conflicts and 120 s. Hard combinatorial formulas are also
+  slow: PHP(9, 8) takes about 23 s.
 * **Speed of the language.** The solver runs at roughly 1,500–6,000
   conflicts per second, depending on formula size, and propagation is
   70–75% of the time. I tried two rewrites of the propagation loop:
